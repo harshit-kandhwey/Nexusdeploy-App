@@ -1,6 +1,6 @@
 # Integration Guide (for infrastructure / platform repos)
 
-This document is the contract between Nexusdeploy App and whatever deploys it: Terraform, Helm, Kubernetes manifests, ECS task definitions, Nomad, docker-compose, or a plain VM. It describes **what the app needs from its environment** and **what it exposes**. It contains no cloud-specific instructions on purpose.
+This document is the contract between Nexusdeploy App and whatever deploys it: Terraform, Helm, Kubernetes manifests, ECS task definitions, Nomad, docker-compose, or a plain VM. It describes **what the app needs from its environment** and **what it exposes**. It contains no cloud-specific instructions on purpose. Kubernetes deployment (Helm chart, GitOps, cluster config) is owned by [Kubeforge](https://github.com/harshit-kandhwey/Kubeforge); this repo contains no chart, manifests or `deploy/` directory.
 
 Status legend: **Current** = true of the code today. **Planned** = defined in [RESTRUCTURE-PLAN.md](RESTRUCTURE-PLAN.md) and not yet implemented. Do not build against **Planned** items until they are marked Current.
 
@@ -159,26 +159,28 @@ Run to completion, then exit. Override the container command:
 
 - Alembic via Flask-Migrate, in `migrations/`. Applied by `-m src.init_db`.
 - On PostgreSQL the upgrade runs under a session advisory lock, so concurrent callers are safe: the second waits, then no-ops.
-- **Current behaviour:** the worker entrypoint also runs `init_db` on start when `DB_MASTER_USER`/`DB_MASTER_PASSWORD` are present, unless `SKIP_INIT_DB=true`. On Kubernetes, prefer a single pre-release Job and set `SKIP_INIT_DB=true` on workers and beat, so pods never need master DB credentials.
+- **Current behaviour:** the worker entrypoint also runs `init_db` on start when `DB_MASTER_USER`/`DB_MASTER_PASSWORD` are present, unless `SKIP_INIT_DB=true`. A Kubernetes consumer (such as Kubeforge) should run a single pre-release Job and set `SKIP_INIT_DB=true` on workers and beat, so pods never need master DB credentials.
 - Migrations are forward-only. Deploy schema changes compatible with the previous app version (expand, then contract) if you roll back or run blue/green.
 
 ## 6. Deployment recipes
 
-### Kubernetes (until the official chart exists)
+### Kubernetes (consumer guidance)
 
-- Three Deployments: `api`, `worker`, `beat` (beat: `replicas: 1`, `strategy: Recreate`).
-- A Job (Helm pre-install/pre-upgrade hook) running `-m src.init_db`.
+This repo ships images only; the chart and cluster configuration are owned by [Kubeforge](https://github.com/harshit-kandhwey/Kubeforge). What this contract requires of any Kubernetes deployment:
+
+- Three workloads: `api`, `worker`, `beat` (beat: `replicas: 1`, `strategy: Recreate`).
+- A one-shot Job (for example a Helm pre-install/pre-upgrade hook) running `-m src.init_db`.
 - Workers and beat: `SKIP_INIT_DB=true`.
 - `api`: readiness `GET /health` on `5000`; liveness a TCP socket or `/ready`; a startup probe allowing ~60s.
 - Run as uid `65532`, `runAsNonRoot`, drop all capabilities, `seccompProfile: RuntimeDefault`.
 - A `PodDisruptionBudget` on `api` and `worker`, and a `preStop` sleep of a few seconds.
 - Scale workers on Celery queue length (e.g. KEDA Redis scaler on the `CELERY_TASK_QUEUE` list).
 - Ingress: TLS at the controller, proxy timeouts ≥ 120s, no CORS at the proxy.
-- The official chart under `deploy/` is **Planned**.
+- A change to this contract lands in this repo and in every consumer together.
 
 ### docker-compose / VM / on-prem
 
-Run `api`, `worker`, `beat`, Postgres and Redis. The repo's root `docker-compose.yml` is a development file (bind-mounts the source, dev secrets) and does **not** yet run the schema initialiser; run `-m src.init_db` once before use. A hardened reference compose file under `deploy/` is **Planned**.
+Run `api`, `worker`, `beat`, Postgres and Redis. The repo's root `docker-compose.yml` is a development file (bind-mounts the source, dev secrets) and does **not** yet run the schema initialiser; run `-m src.init_db` once before use. Hardened production compose definitions are the consumer's to supply; this repo keeps only the development file.
 
 ### Blue/green or canary
 

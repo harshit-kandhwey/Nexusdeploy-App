@@ -1,18 +1,19 @@
 # Nexusdeploy App
 
-A project-management REST API (teams, projects, tasks, comments, role-based access, audit log) with asynchronous background workers. Built to be a **realistic, production-style workload** that is portable across clouds, on-prem and local machines, and deployable to Kubernetes.
+A project-management REST API (teams, projects, tasks, comments, role-based access, audit log) with asynchronous background workers. Built to be a **realistic, production-style workload** that is portable across clouds, on-prem and local machines, and shipped as container images that any platform can run. Deployment infrastructure lives in other repos; see [Repository boundaries](#repository-boundaries).
 
-> **Status:** the API, workers, migrations and container images are working today. Portability adapters, Kubernetes manifests and the extended feature set are planned and tracked in [docs/RESTRUCTURE-PLAN.md](docs/RESTRUCTURE-PLAN.md). This README marks what is **current** versus **planned**.
+> **Status:** the API, workers, migrations and container images are working today. Portability adapters and the extended feature set are planned and tracked in [docs/RESTRUCTURE-PLAN.md](docs/RESTRUCTURE-PLAN.md). This README marks what is **current** versus **planned**.
 
 ## Contents
 
 - [What it does](#what-it-does)
 - [Architecture](#architecture)
+- [Repository boundaries](#repository-boundaries)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [API overview](#api-overview)
 - [Development](#development)
-- [Deploying it](#deploying-it)
+- [Using the images](#using-the-images)
 - [Documentation](#documentation)
 - [Roadmap](#roadmap)
 
@@ -31,7 +32,8 @@ A project-management REST API (teams, projects, tasks, comments, role-based acce
 | Alembic migrations with concurrency-safe upgrade | Current |
 | Attachments, notifications, scheduled jobs, search, webhooks, analytics | Planned |
 | Pluggable storage / email / search backends (cloud-neutral) | Planned |
-| Kubernetes Helm chart, proxy-aware config | Planned |
+| Proxy-aware config (trusted hop count) | Planned |
+| Deployment infrastructure (Terraform, Helm chart, GitOps, ECS) | Not in this repo; see [Repository boundaries](#repository-boundaries) |
 | `docker-compose.yml` for local development | Partial: exists, but does not create the schema yet (D9 in [docs/RESTRUCTURE-PLAN.md](docs/RESTRUCTURE-PLAN.md#11-verified-defects-from-the-full-repo-review)) |
 
 ## Architecture
@@ -83,6 +85,18 @@ docs/               integration contract and plans
 ```
 
 The planned target layout is in [docs/RESTRUCTURE-PLAN.md](docs/RESTRUCTURE-PLAN.md).
+
+## Repository boundaries
+
+Three related repos, one owner each:
+
+| Repo | Owns |
+| --- | --- |
+| **Nexusdeploy-App** (this repo) | All application code: the Flask API, Celery worker and beat, migrations, the Dockerfile, the image build, and the workload contract (entrypoints, `/health`, `/ready`, `/metrics`, env vars, one-shot tasks such as `src.init_db`, `src.smoke_test`, `src.queue_depth_check`) |
+| [Ephemeral-Deploy](https://github.com/harshit-kandhwey/Ephemeral-Deploy) | The AWS ECS infrastructure code (Terraform, blue-green, CI/CD, monitoring) that deploys this workload |
+| [Kubeforge](https://github.com/harshit-kandhwey/Kubeforge) | The Kubernetes infrastructure code (Terraform, Helm chart, GitOps, cluster config) that deploys this workload |
+
+Infra repos consume this repo only as container images and the documented contract ([docs/INTEGRATION.md](docs/INTEGRATION.md)); they never edit its code. This repo contains no infrastructure or deployment code for any deployed target (ECS, Kubernetes). A local-development compose file is the one exception.
 
 ## Quick start
 
@@ -174,7 +188,7 @@ flask db migrate -m "describe the change"
 
 Migrations must be backwards compatible with the previous release (expand, then contract), because rolling and blue/green deployments run two versions at once.
 
-## Deploying it
+## Using the images
 
 The app is consumed **as container images**; it contains no cloud-specific code.
 
@@ -188,9 +202,9 @@ Before first start and on every release, run the one-shot initialiser:
 python -m src.init_db     # in a container: override the command to  -m src.init_db
 ```
 
-For probes, ingress and proxy settings, scaling, blue/green, and Kubernetes guidance, read **[docs/INTEGRATION.md](docs/INTEGRATION.md)**. That document is written for the people and repositories that deploy this app.
+For probes, ingress and proxy settings, scaling, blue/green, and what an orchestrator must supply, read **[docs/INTEGRATION.md](docs/INTEGRATION.md)**. That document is written for the people and repositories that deploy this app.
 
-Deployment definitions for this app's reference infrastructure (Terraform, blue/green ECS, CI/CD) live in a separate repo, [Ephemeral-Deploy](https://github.com/harshit-kandhwey/Ephemeral-Deploy). Other infrastructure repos should consume the same contract.
+Deploying them is the job of the infrastructure repos listed under [Repository boundaries](#repository-boundaries); any other infrastructure repo should consume the same contract.
 
 ## Documentation
 
@@ -202,4 +216,4 @@ Deployment definitions for this app's reference infrastructure (Terraform, blue/
 
 ## Roadmap
 
-Phase 0 makes the app portable and Kubernetes-ready (proxy awareness, liveness/readiness split, graceful shutdown, JSON logs, secret files, Helm chart, docker-compose). Phase 1 finishes attachments, notifications, scheduled jobs and auth hardening. Later phases add search, webhooks, real-time updates, multi-tenancy and analytics. The detailed plan is in [docs/RESTRUCTURE-PLAN.md](docs/RESTRUCTURE-PLAN.md).
+Phase 0 makes the app portable and easy for any orchestrator to run (proxy awareness, liveness/readiness split, graceful shutdown, JSON logs, secret files). Phase 1 finishes attachments, notifications, scheduled jobs and auth hardening. Later phases add search, webhooks, real-time updates, multi-tenancy and analytics. The detailed plan is in [docs/RESTRUCTURE-PLAN.md](docs/RESTRUCTURE-PLAN.md).

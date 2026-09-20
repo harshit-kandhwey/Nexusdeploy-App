@@ -48,8 +48,8 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      # No curl in the distroless runtime image — see
-      # the Ephemeral-Deploy repo's docs/design-decisions.md#distroless-runtime-images.
+      # The distroless runtime image has no curl or shell, so the check is a
+      # Python script.
       test: ["CMD", "python3", "/app/healthcheck.py"]
       interval: 30s
       timeout: 5s
@@ -85,7 +85,7 @@ services:
       dockerfile: Dockerfile.worker
     # /entrypoint_worker.py first, not a bare celery command — the image's
     # ENTRYPOINT is the distroless base's own python3, so this whole line is
-    # arguments to it. See the Ephemeral-Deploy repo's docs/design-decisions.md#distroless-runtime-images.
+    # arguments to it (see docs/INTEGRATION.md, "Container contract").
     command: /entrypoint_worker.py celery -A src.celery_worker:celery beat --loglevel=info
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/nexusdeploy
