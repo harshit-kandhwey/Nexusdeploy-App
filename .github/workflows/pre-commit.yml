@@ -1,0 +1,85 @@
+name: Pre-commit
+
+# Runs .pre-commit-config.yaml, the same hooks developers run locally, so
+# formatting, lint, static analysis and hygiene checks cannot drift between
+# a laptop and CI. Tests are not run here (see ci.yml).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pre-commit-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  PRE_COMMIT_VERSION: "4.6.2"
+  GITLEAKS_IMAGE: zricethezav/gitleaks:v8.18.4
+
+jobs:
+  hooks:
+    name: Hooks (all files)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install pre-commit==${{ env.PRE_COMMIT_VERSION }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('.pre-commit-config.yaml') }}
+      - name: Run all hooks
+        run: pre-commit run --all-files --show-diff-on-failure --color always
+
+  secrets-history:
+    name: Secret scan (full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      # The pre-commit gitleaks hook only sees staged changes; this scans every
+      # commit reachable from the checked-out ref.
+      - name: Scan history with gitleaks
+        run: docker run --rm -v "$PWD:/repo" "$GITLEAKS_IMAGE" detect --source /repo --redact --no-banner --verbose
+
+  commit-messages:
+    name: Commit messages (Conventional Commits)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install pre-commit==${{ env.PRE_COMMIT_VERSION }}
+      # Merge commits are skipped here; the hook also allows merge, fixup and
+      # squash messages locally.
+      - name: Check each commit message in the PR
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          status=0
+          for sha in $(git rev-list --no-merges "$BASE_SHA..$HEAD_SHA"); do
+            git log -1 --format=%B "$sha" > "$RUNNER_TEMP/msg.txt"
+            if ! pre-commit run conventional-pre-commit --hook-stage commit-msg --commit-msg-filename "$RUNNER_TEMP/msg.txt"; then
+              echo "::error::Commit $sha does not follow Conventional Commits: $(git log -1 --format=%s "$sha")"
+              status=1
+            fi
+          done
+          exit $status

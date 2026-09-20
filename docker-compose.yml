@@ -55,7 +55,7 @@ services:
       timeout: 5s
       retries: 3
     volumes:
-      - .:/app  # For development hot-reload
+      - .:/app # For development hot-reload
 
   worker:
     build:
