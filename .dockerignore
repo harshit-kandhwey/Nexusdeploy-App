@@ -40,3 +40,8 @@ instance/
 Dockerfile
 Dockerfile.*
 .dockerignore
+
+# Repo metadata / local tooling
+.github/
+.claude/
+CLAUDE.md
