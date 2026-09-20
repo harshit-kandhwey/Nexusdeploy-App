@@ -2,7 +2,7 @@
 
 A project-management REST API (teams, projects, tasks, comments, role-based access, audit log) with asynchronous background workers. Built to be a **realistic, production-style workload** that is portable across clouds, on-prem and local machines, and shipped as container images that any platform can run. Deployment infrastructure lives in other repos; see [Repository boundaries](#repository-boundaries).
 
-> **Status:** the API, workers, migrations and container images are working today. Portability adapters and the extended feature set are planned and tracked in [docs/RESTRUCTURE-PLAN.md](docs/RESTRUCTURE-PLAN.md). This README marks what is **current** versus **planned**.
+> **Status:** the API, workers, migrations and container images are working today. Portability adapters and the extended feature set are planned. This README marks what is **current** versus **planned**.
 
 ## Contents
 
@@ -34,7 +34,7 @@ A project-management REST API (teams, projects, tasks, comments, role-based acce
 | Pluggable storage / email / search backends (cloud-neutral) | Planned |
 | Proxy-aware config (trusted hop count) | Planned |
 | Deployment infrastructure (Terraform, Helm chart, GitOps, ECS) | Not in this repo; see [Repository boundaries](#repository-boundaries) |
-| `docker-compose.yml` for local development | Partial: exists, but does not create the schema yet (D9 in [docs/RESTRUCTURE-PLAN.md](docs/RESTRUCTURE-PLAN.md#11-verified-defects-from-the-full-repo-review)) |
+| `docker-compose.yml` for local development | Partial: exists, but does not create the schema yet, so run `python -m src.init_db` against it first |
 
 ## Architecture
 
@@ -81,10 +81,8 @@ migrations/         Alembic
 tests/              pytest suite
 Dockerfile          api image
 Dockerfile.worker   worker/beat image
-docs/               integration contract and plans
+docs/               integration contract
 ```
-
-The planned target layout is in [docs/RESTRUCTURE-PLAN.md](docs/RESTRUCTURE-PLAN.md).
 
 ## Repository boundaries
 
@@ -130,7 +128,7 @@ To run a worker locally:
 celery -A src.celery_worker:celery worker --loglevel=info
 ```
 
-A `docker-compose.yml` (Postgres, Redis, api, worker, beat, redis-commander) exists but does not yet run the schema initialiser, so run `python -m src.init_db` against it yourself for now. Adding an init service, MinIO and MailHog is tracked in [docs/TODO.md](docs/TODO.md).
+A `docker-compose.yml` (Postgres, Redis, api, worker, beat, redis-commander) exists but does not yet run the schema initialiser, so run `python -m src.init_db` against it yourself for now. Adding an init service, MinIO and MailHog is planned.
 
 ## Configuration
 
@@ -211,9 +209,7 @@ Deploying them is the job of the infrastructure repos listed under [Repository b
 | Document | Audience | Contents |
 | --- | --- | --- |
 | [docs/INTEGRATION.md](docs/INTEGRATION.md) | Infra / platform engineers | Roles, dependencies, env vars, endpoints, probes, images, migrations, scaling, security |
-| [docs/RESTRUCTURE-PLAN.md](docs/RESTRUCTURE-PLAN.md) | Maintainers | Target architecture, adapter model, phased roadmap, contract-stability rules |
-| [docs/TODO.md](docs/TODO.md) | Maintainers | Ordered, commit-sized todo list with standing rules and open decisions |
 
 ## Roadmap
 
-Phase 0 makes the app portable and easy for any orchestrator to run (proxy awareness, liveness/readiness split, graceful shutdown, JSON logs, secret files). Phase 1 finishes attachments, notifications, scheduled jobs and auth hardening. Later phases add search, webhooks, real-time updates, multi-tenancy and analytics. The detailed plan is in [docs/RESTRUCTURE-PLAN.md](docs/RESTRUCTURE-PLAN.md).
+Phase 0 makes the app portable and easy for any orchestrator to run (proxy awareness, liveness/readiness split, graceful shutdown, JSON logs, secret files). Phase 1 finishes attachments, notifications, scheduled jobs and auth hardening. Later phases add search, webhooks, real-time updates, multi-tenancy and analytics.

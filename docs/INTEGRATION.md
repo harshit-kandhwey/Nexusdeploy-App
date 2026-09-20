@@ -2,7 +2,7 @@
 
 This document is the contract between Nexusdeploy App and whatever deploys it: Terraform, Helm, Kubernetes manifests, ECS task definitions, Nomad, docker-compose, or a plain VM. It describes **what the app needs from its environment** and **what it exposes**. It contains no cloud-specific instructions on purpose. Kubernetes deployment (Helm chart, GitOps, cluster config) is owned by [Kubeforge](https://github.com/harshit-kandhwey/Kubeforge); this repo contains no chart, manifests or `deploy/` directory.
 
-Status legend: **Current** = true of the code today. **Planned** = defined in [RESTRUCTURE-PLAN.md](RESTRUCTURE-PLAN.md) and not yet implemented. Do not build against **Planned** items until they are marked Current.
+Status legend: **Current** = true of the code today. **Planned** = intended, and not implemented in this repo yet. Do not build against **Planned** items until they are marked Current.
 
 If you change anything in this document, change the app and the consuming repo together.
 
@@ -27,7 +27,7 @@ Beat must never run with more than one replica: duplicate schedulers enqueue dup
 | PostgreSQL ≥ 13 | Yes (production) | SQLite is used only for tests and local dev. |
 | Redis ≥ 6 | Yes | Used for: JWT revocation list, rate-limit storage, cache, and (by default) the Celery broker and result backend. |
 | Object storage | Attachments (Planned) | Currently boto3/S3 only, and no endpoint uses it yet. Planned: pluggable `local\|s3\|azure\|gcs`. |
-| SMTP / email provider | Notifications (Planned) | Currently a single Celery email task. Planned: pluggable backend, SMTP by default. |
+| SMTP / email provider | Notifications (Planned) | Currently three Celery tasks (`send_task_assignment_email`, `send_comment_notification`, `send_daily_digest`) whose bodies are stubs: they only write a log line, nothing is sent. Planned: pluggable backend, SMTP by default. |
 | OTLP collector | Optional | Tracing is off unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set. |
 
 ### Redis is used for four separate things
@@ -143,7 +143,7 @@ Defaults: 200/day and 50/hour per client, plus per-route limits (login 10/min, r
 | Signals | Standard `SIGTERM` for shutdown |
 | Logs | stdout/stderr, plain text (JSON logs are **Planned**) |
 
-Gunicorn workers/threads are hardcoded in the image `CMD` (sized for a small ECS task). Override the command to change them until env-driven tuning (**Planned**) lands. A read-only root filesystem is not yet verified; `/tmp` writes should be assumed.
+The image `CMD` starts gunicorn with 2 workers, 2 threads per worker (`gthread` worker class) and a 120 s worker timeout. These are fixed in the `Dockerfile`; no environment variable changes them. Override the command to change them until env-driven tuning (**Planned**) lands. A read-only root filesystem is not yet verified; `/tmp` writes should be assumed.
 
 ### One-shot tasks
 
