@@ -13,3 +13,5 @@ dev.db
 instance/
 .DS_Store
 Thumbs.db
+docs/RESTRUCTURE-PLAN.md
+docs/TODO.md
