@@ -1,12 +1,19 @@
 from flask import current_app, jsonify, request
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import jwt_required
 
 from ...extensions import db
 from ...models.team import Team
 from ...models.user import User
-from ...utils.decorators import role_required
+from ...utils.decorators import get_current_user_or_401, role_required
 from ...utils.validation import USER_ROLES, ValidationError, get_json_body, validate_password
 from . import api_v1
+
+
+def _set_active(user, active):
+    """Change is_active; deactivating also revokes every outstanding token."""
+    if user.is_active and not active:
+        user.token_version += 1
+    user.is_active = active
 
 
 @api_v1.route("/users", methods=["GET"])
@@ -44,11 +51,10 @@ def get_users():
 @jwt_required()
 def get_user(user_id):
     """Get user by ID"""
-    try:
-        current_user_id = int(get_jwt_identity())
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid authentication"}), 400
-    current_user = User.query.get_or_404(current_user_id)
+    current_user, error_response = get_current_user_or_401()
+    if error_response:
+        return error_response
+    current_user_id = current_user.id
     user = User.query.get_or_404(user_id)
     # Only include email for admins/managers or the user themselves
     include_email = current_user.role in ("admin", "manager") or current_user_id == user_id
@@ -59,11 +65,10 @@ def get_user(user_id):
 @jwt_required()
 def update_user(user_id):
     """Update user profile"""
-    try:
-        current_user_id = int(get_jwt_identity())
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid authentication"}), 400
-    current_user = User.query.get_or_404(current_user_id)
+    current_user, error_response = get_current_user_or_401()
+    if error_response:
+        return error_response
+    current_user_id = current_user.id
     user = User.query.get_or_404(user_id)
 
     # Users can only update themselves; admins can update anyone
@@ -98,7 +103,7 @@ def update_user(user_id):
         if "is_active" in data:
             if not isinstance(data["is_active"], bool):
                 return jsonify({"error": "is_active must be a boolean"}), 400
-            user.is_active = data["is_active"]
+            _set_active(user, data["is_active"])
 
         if "team_id" in data:
             team_id = data["team_id"]
@@ -127,6 +132,6 @@ def update_user(user_id):
 def delete_user(user_id):
     """Deactivate a user (admin only) — soft delete"""
     user = User.query.get_or_404(user_id)
-    user.is_active = False
+    _set_active(user, False)
     db.session.commit()
     return jsonify({"message": "User deactivated"}), 200

@@ -82,12 +82,21 @@ def create_app(config_name="default"):
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload):
         from .extensions import redis_client as rc
+        from .models.user import User
 
         if rc is None:
             app.logger.error("Redis unavailable; rejecting JWT because blocklist cannot be checked")
             return True
         try:
-            return bool(rc.exists(f"jti_blocklist:{jwt_payload['jti']}"))
+            if rc.exists(f"jti_blocklist:{jwt_payload['jti']}"):
+                return True
+
+            # A token minted before the user's token_version was last bumped
+            # (deactivation) is revoked. Tokens predating the "tv" claim count
+            # as version 0, so they survive a rolling deploy. The same
+            # identity-map lookup is reused by get_current_user_or_401.
+            user = db.session.get(User, int(jwt_payload["sub"]))
+            return user is not None and jwt_payload.get("tv", 0) != user.token_version
         except Exception:
             app.logger.exception("Failed to check JWT blocklist")
             return True

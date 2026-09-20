@@ -173,8 +173,9 @@ def login():
     if not user.is_active:
         return jsonify({"error": "Account is disabled"}), 403
 
-    access_token = create_access_token(identity=str(user.id))
-    refresh_token = create_refresh_token(identity=str(user.id))
+    claims = {"tv": user.token_version}
+    access_token = create_access_token(identity=str(user.id), additional_claims=claims)
+    refresh_token = create_refresh_token(identity=str(user.id), additional_claims=claims)
 
     audit = AuditLog(
         user_id=user.id,
@@ -219,7 +220,7 @@ def refresh():
     user = User.query.get(user_id)
     if not user or not user.is_active:
         return jsonify({"error": "Account is disabled"}), 403
-    access_token = create_access_token(identity=str(user_id))
+    access_token = create_access_token(identity=str(user_id), additional_claims={"tv": user.token_version})
     return jsonify({"access_token": access_token}), 200
 
 

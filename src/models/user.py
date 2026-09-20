@@ -16,6 +16,9 @@ class User(db.Model):
     # admin, manager, developer
     role = db.Column(db.String(20), default="developer")
     is_active = db.Column(db.Boolean, default=True)
+    # Embedded in every JWT as the "tv" claim; bumping it revokes all of the
+    # user's outstanding access and refresh tokens at once.
+    token_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

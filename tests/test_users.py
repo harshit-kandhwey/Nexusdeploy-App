@@ -159,3 +159,82 @@ def test_delete_user_as_developer_forbidden(client, auth_headers, dev_user_id):
 def test_delete_nonexistent_user(client, admin_headers):
     r = client.delete("/api/v1/users/99999", headers=admin_headers)
     assert r.status_code == 404
+
+
+# ── D1: deactivated users lose access ─────────────────────────────────────────
+
+
+def _login_tokens(client, username="testuser", password="password123"):
+    r = client.post("/api/v1/auth/login", json={"username": username, "password": password})
+    assert r.status_code == 200
+    return (
+        {"Authorization": f'Bearer {r.json["access_token"]}'},
+        {"Authorization": f'Bearer {r.json["refresh_token"]}'},
+    )
+
+
+def test_deleted_user_access_token_rejected_everywhere(client, admin_headers, dev_user_id):
+    access, _ = _login_tokens(client)
+    assert client.delete(f"/api/v1/users/{dev_user_id}", headers=admin_headers).status_code == 200
+
+    assert client.get(f"/api/v1/users/{dev_user_id}", headers=access).status_code == 401
+    assert client.put(f"/api/v1/users/{dev_user_id}", headers=access, json={"full_name": "x"}).status_code == 401
+    assert client.get("/api/v1/auth/me", headers=access).status_code == 401
+
+
+def test_deleted_user_refresh_token_rejected(client, admin_headers, dev_user_id):
+    _, refresh = _login_tokens(client)
+    assert client.delete(f"/api/v1/users/{dev_user_id}", headers=admin_headers).status_code == 200
+
+    assert client.post("/api/v1/auth/refresh", headers=refresh).status_code == 401
+
+
+def test_put_is_active_false_revokes_existing_tokens(client, admin_headers, dev_user_id):
+    access, refresh = _login_tokens(client)
+    r = client.put(f"/api/v1/users/{dev_user_id}", headers=admin_headers, json={"is_active": False})
+    assert r.status_code == 200
+
+    assert client.get(f"/api/v1/users/{dev_user_id}", headers=access).status_code == 401
+    assert client.post("/api/v1/auth/refresh", headers=refresh).status_code == 401
+
+
+def test_reactivation_does_not_resurrect_old_tokens(client, admin_headers, dev_user_id):
+    access, _ = _login_tokens(client)
+    client.put(f"/api/v1/users/{dev_user_id}", headers=admin_headers, json={"is_active": False})
+    client.put(f"/api/v1/users/{dev_user_id}", headers=admin_headers, json={"is_active": True})
+
+    assert client.get(f"/api/v1/users/{dev_user_id}", headers=access).status_code == 401
+
+    fresh, _ = _login_tokens(client)
+    assert client.get(f"/api/v1/users/{dev_user_id}", headers=fresh).status_code == 200
+
+
+def test_setting_is_active_true_on_active_user_keeps_tokens(client, admin_headers, dev_user_id):
+    access, _ = _login_tokens(client)
+    client.put(f"/api/v1/users/{dev_user_id}", headers=admin_headers, json={"is_active": True})
+
+    assert client.get(f"/api/v1/users/{dev_user_id}", headers=access).status_code == 200
+
+
+@pytest.mark.parametrize("method", ["get", "put"])
+def test_inactive_flag_set_directly_is_403_on_user_routes(client, auth_headers, dev_user_id, method):
+    """Defence in depth: even without a version bump (e.g. an out-of-band DB
+    change), the user routes themselves reject a disabled account."""
+    with client.application.app_context():
+        db.session.get(User, dev_user_id).is_active = False
+        db.session.commit()
+
+    kwargs = {"json": {"full_name": "x"}} if method == "put" else {}
+    r = getattr(client, method)(f"/api/v1/users/{dev_user_id}", headers=auth_headers, **kwargs)
+    assert r.status_code == 403
+
+
+def test_token_without_version_claim_is_accepted_for_version_zero_user(client, app, dev_user_id):
+    """Tokens minted before the tv claim existed must survive a rolling deploy."""
+    from flask_jwt_extended import create_access_token
+
+    with app.app_context():
+        token = create_access_token(identity=str(dev_user_id))
+
+    r = client.get(f"/api/v1/users/{dev_user_id}", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
