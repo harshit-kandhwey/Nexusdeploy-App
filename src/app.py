@@ -5,7 +5,7 @@ from flask import Flask, jsonify
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sqlalchemy import text
 
-from .config import config, redact_url
+from .config import config, is_disposable_test_database, redact_url
 from .extensions import cors, db, init_celery, init_redis, jwt, limiter, migrate, swagger
 from .otel import instrument, setup_tracing
 
@@ -23,6 +23,13 @@ def create_app(config_name="default"):
     # INFO diagnostic emitted before this call is dropped — including the
     # rate-limiter storage line below. basicConfig must precede it.
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    if config_name == "testing" and not is_disposable_test_database(app.config["SQLALCHEMY_DATABASE_URI"]):
+        raise RuntimeError(
+            "Refusing to run the testing config against a database that is not disposable: "
+            f"{redact_url(app.config['SQLALCHEMY_DATABASE_URI'])}. TEST_DATABASE_URL must be in-memory SQLite "
+            "or a server database whose name contains a 'test' token (e.g. nexusdeploy_test)."
+        )
 
     # Collects every missing var before raising, so a fresh deploy reports all
     # of them at once instead of one restart-fix-restart cycle per variable.

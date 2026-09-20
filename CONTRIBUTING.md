@@ -17,6 +17,10 @@ pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=85   # nee
 flake8 . --max-line-length=120 --exclude=migrations/ && black --check . && isort --check . && bandit -r src/ -ll
 ```
 
+- Tests run on in-memory SQLite by default. To run them on Postgres (as CI does), set
+  `TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/nexusdeploy_test`. The name must
+  contain a `test` token: the suite drops every table it creates and refuses to run
+  against anything else. `DATABASE_URL` is never used for tests.
 - A model change needs `flask db migrate -m "..."`; commit the generated revision.
 - A new guard/test isn't trusted until you have watched it fail on the bug it
   catches (plant the bug, see red, remove it, see green).

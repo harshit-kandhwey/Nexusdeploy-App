@@ -2,6 +2,7 @@ import os
 import sys
 
 import pytest
+from sqlalchemy import text
 
 from src import create_app
 from src.extensions import db
@@ -11,16 +12,35 @@ from src.models.user import User
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
+def reset_schema():
+    """Drop every table, including Alembic's version table.
+
+    db.drop_all() only knows the models; a leftover alembic_version row makes a
+    later upgrade() believe the schema is at head on a persistent (Postgres)
+    test database, so the tables it should create never appear.
+    """
+    db.session.remove()
+    db.drop_all()
+    db.session.execute(text("DROP TABLE IF EXISTS alembic_version"))
+    db.session.commit()
+    db.session.remove()
+
+
 @pytest.fixture
 def app():
     """Create and configure test app"""
     app = create_app("testing")
 
     with app.app_context():
+        # A previous run killed mid-test leaves tables behind on Postgres.
+        reset_schema()
         db.create_all()
         yield app
-        db.session.remove()
-        db.drop_all()
+        reset_schema()
+        # Each test builds its own app and engine; without this every test
+        # leaves a pool of open connections and Postgres runs out of them
+        # (max_connections is 100) partway through the suite.
+        db.engine.dispose()
 
 
 @pytest.fixture

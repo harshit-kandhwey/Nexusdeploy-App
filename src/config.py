@@ -25,6 +25,22 @@ def _get_cors_origins():
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
+def is_disposable_test_database(uri):
+    """
+    True only for a database the test suite may create and drop tables in:
+    in-memory SQLite, or a server database whose name has a "test" token
+    (nexusdeploy_test, test_db). Anything else — including a file-backed
+    SQLite database such as the dev one — is refused.
+    """
+    if not uri:
+        return False
+    parsed = urlparse(uri)
+    if parsed.scheme.startswith("sqlite"):
+        return parsed.path in ("", "/", "/:memory:")
+    name = parsed.path.lstrip("/")
+    return "test" in name.replace("-", "_").split("_")
+
+
 def redact_url(url):
     """
     Mask the password in a URL so it is safe to log.
@@ -190,13 +206,16 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     """
     Testing configuration.
-    Uses in-memory SQLite so tests run without any external services.
+    Uses in-memory SQLite unless TEST_DATABASE_URL selects a disposable
+    server database, so tests run without any external services.
     Redis is pointed at DB 15 to avoid polluting other databases if
     a local Redis happens to be running.
     """
 
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    # Never DATABASE_URL: that names a real database in CI and deployed
+    # environments, and the suite drops every table it creates.
+    SQLALCHEMY_DATABASE_URI = os.environ.get("TEST_DATABASE_URL") or "sqlite:///:memory:"
     REDIS_URL = "redis://localhost:6379/15"
 
     # Fixed test-only keys. Without these the suite cannot run unless the caller

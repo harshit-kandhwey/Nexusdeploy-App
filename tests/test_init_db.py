@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from conftest import reset_schema
 
 from src import create_app
 from src.extensions import db
@@ -102,8 +103,13 @@ def test_create_schema_creates_queryable_tables():
     fresh_app = create_app("testing")
     create_schema(fresh_app)
     with fresh_app.app_context():
-        assert User.query.count() == 0  # no exception means the table exists
-        db.drop_all()
+        try:
+            assert User.query.count() == 0  # no exception means the table exists
+        finally:
+            # Ends the read transaction before dropping (an open one blocks
+            # DROP TABLE on Postgres) and clears alembic_version too.
+            reset_schema()
+            db.engine.dispose()
 
 
 # ── seed_sample_data ────────────────────────────────────────────────────────
