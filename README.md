@@ -25,7 +25,8 @@ A project-management REST API (teams, projects, tasks, comments, role-based acce
 | Roles (`admin`, `manager`, `developer`) enforced per endpoint | Current |
 | Audit log of every mutation and failed login | Current |
 | Redis-backed rate limiting, caching and token revocation | Current |
-| Celery workers, per-slot queues, email task | Current |
+| Celery workers, per-slot queues | Current |
+| Email notifications | Stub only (logs, sends nothing) |
 | Prometheus metrics, OpenTelemetry tracing, Swagger UI | Current |
 | Alembic migrations with concurrency-safe upgrade | Current |
 | Attachments, notifications, scheduled jobs, search, webhooks, analytics | Planned |
